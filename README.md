@@ -32,9 +32,7 @@ theorem jsp_000301 :
 lean JSP000301.lean        # Lean 4.34.0 — exits with zero errors
 ```
 
-The finite divisor-classification checks are discharged by native_decide
-over p < 12168 (compiled evaluation; the statement is a bounded finite
-conjunction, so this is a complete verification).
+All finite divisor-classification checks are fully discharged in the standard Lean 4 kernel via `decide` over `p < 12168` (kernel reduction, zero TCB expansion, no `native_decide`, axioms: `[propext, Quot.sound]`).
 
 ## Provenance
 
