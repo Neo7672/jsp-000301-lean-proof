@@ -1,3 +1,5 @@
+set_option maxRecDepth 50000
+
 /-!
 # JSP-000301: Consecutive powerful numbers without a perfect square
 
@@ -15,7 +17,8 @@ Answer: **No.** The counterexample:
 The file is self-contained (bare Lean 4, no Mathlib / no Batteries).
 Primality is decided by trial division; the divisor classification of
 12167 / 12168 is discharged by a finite computation over `p < 12168`
-(`checkAllP`, verified natively via `native_decide`).
+(`checkAllP`, fully verified in the Lean 4 kernel via `decide`,
+with zero expansion of the Trusted Computing Base).
 
 Background: Golomb, *Powerful numbers*, Amer. Math. Monthly 77 (1970)
 848-855; Walsh, *Consecutive integer pairs of powerful numbers and related
@@ -90,13 +93,17 @@ def IsSquare (n : Nat) : Prop := ∃ r, r * r = n
 /-! ## Finite witness checks -/
 
 /-- `checkAllP target stop ok = true` iff every `p < stop` with `isPrime p`
-and `p ∣ target` satisfies `ok p = true`. -/
+and `p ∣ target` satisfies `ok p = true`.
+By short-circuiting on `stop ∣ target` first, this only evaluates `isPrime`
+for actual divisors of `target`, making pure kernel `decide` reduction fast. -/
 def checkAllP (target stop : Nat) (ok : Nat → Bool) : Bool :=
   match stop with
   | 0 => true
   | stop + 1 =>
     checkAllP target stop ok &&
-      (!(decide (isPrime stop)) || !(decide (stop ∣ target)) || ok stop)
+      (if stop ∣ target then
+        if isPrime stop then ok stop else true
+       else true)
 
 theorem checkAllP_spec {target stop : Nat} {ok : Nat → Bool}
     (h : checkAllP target stop ok = true) :
@@ -110,19 +117,12 @@ theorem checkAllP_spec {target stop : Nat} {ok : Nat → Bool}
       rcases Nat.lt_or_ge p stop with hlt | hge
       · exact ih h1 p hlt hprime hdv
       · have hx : p = stop := by omega
-        rw [hx] at hprime hdv
-        rw [decide_eq_true hprime] at h2
-        simp only [Bool.not_true, Bool.false_or] at h2
-        cases hb : decide (stop ∣ target) with
-        | true =>
-            rw [hb] at h2
-            simp only [Bool.not_true, Bool.false_or] at h2
-            rw [hx]
-            exact h2
-        | false =>
-            rw [hb] at h2
-            simp only [Bool.not_false, Bool.true_or] at h2
-            exact absurd (decide_eq_true hdv) (by rw [hb]; simp)
+        subst hx
+        by_cases hdv_stop : p ∣ target
+        · simp only [hdv_stop, ↓reduceIte] at h2
+          simp only [hprime, ↓reduceIte] at h2
+          exact h2
+        · exact absurd hdv hdv_stop
 
 /-! ## The counterexample -/
 
@@ -137,7 +137,7 @@ theorem prime_divisor_of_12167 {p : Nat} (hprime : isPrime p = true) (hdv : p �
     omega
   have h := checkAllP_spec
     (show checkAllP 12167 12168 (fun q => decide (q = 23)) = true from by
-      native_decide) p hlt hprime hdv
+      decide) p hlt hprime hdv
   exact of_decide_eq_true h
 
 theorem powerful_12167 : Powerful 12167 := by
@@ -154,7 +154,7 @@ theorem prime_divisor_of_12168 {p : Nat} (hprime : isPrime p = true) (hdv : p �
   have h := checkAllP_spec
     (show checkAllP 12168 12169
         (fun q => decide (q = 2) || decide (q = 3) || decide (q = 13)) = true from by
-      native_decide) p hlt hprime hdv
+      decide) p hlt hprime hdv
   cases hb2 : decide (p = 2) with
   | true => exact Or.inl (of_decide_eq_true hb2)
   | false =>
